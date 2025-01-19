@@ -126,6 +126,13 @@ distances <- list(
     })
 distances %>% 
     map(~mutate_if(.x, is.numeric, function(a){round(a, 2)})) %>% 
-    writexl::write_xlsx("distances.xlsx")
+    writexl::write_xlsx("export/distances.xlsx")
 
-# ADD PERMANOVA!11!1
+# Permanova ---------------------------------------------------------------
+permanova <- vegan::adonis2(
+    dis ~ zone + year, data = wide1, 
+    by = "terms", permutations = 9999)
+permanova %>% 
+    rownames_to_column("term") %>% 
+    writexl::write_xlsx( "permanova.xlsx")
+
