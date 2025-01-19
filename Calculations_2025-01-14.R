@@ -30,16 +30,41 @@ wide1 <- long %>% # div2 - turs are united
                 # quantitative vartiables come from abundance (inds. per 100 trap-days)
                 values_fn = sum, values_fill = 0) %>% 
     select(-no_insects)
+
+wide1 %>% 
+    select(-km, -zone4, -zone3) %>% 
+    unite("id", year, zone, site, plot, sep = "_") %>% 
+    write_delim("wide_tmp.data.csv")
+
+nsp_100 <- read_delim("wide_tmp.data.csv", show_col_types = FALSE) %>% 
+    column_to_rownames("id") %>% 
+    t %>% 
+    as.data.frame() %>% 
+    sapply(function(x){
+        x <- x[x>0]
+        if(length(x) == 0){0} else 
+            if(length(x) == 1){1} else {
+                iNEXT::iNEXT(x, size = 100, se = FALSE, q = 0) %>%
+                    pluck("iNextEst", "size_based") %>%
+                    filter(m == 100) %>%
+                    pull(qD)
+            }
+    })
+file.remove("wide_tmp.data.csv")
+
 # 1 = turs 1 and 2 are united
 div1 <- tibble(wide1[,1:7], 
                abu = apply(wide1[,8:ncol(wide1)], 1, sum),
                nsp = apply(wide1[,8:ncol(wide1)], 1, function(a){length(a[a>0])}),
+               nsp100 = nsp_100,
                shan= vegan::diversity(wide1[,8:ncol(wide1)], 
                                       MARGIN = 1, index = "shannon", base = exp(1))
 ) %>% 
-    mutate(km2 = km^2, kmLog = log(km), abuLog = log(abu+1), .after = km)
+    mutate(km2 = km^2, kmLog = log(km), .after = km) %>% 
+    mutate(abuLog = log(abu+1), .after = abu)
+rm(nsp_100)
 
-
+res <- list()
 # Models template ---------------------------------------------------------
 models_fit <- function(formulas){
 fits <- tibble(ff = formulas) %>% 
@@ -118,8 +143,6 @@ model_viz <- function(df, yy){
         guides(fill="none") 
 }
 
-res <- list()
-
 # Abundance ---------------------------------------------------------------
 res$abundance <- c("km", "kmSegmented", "km + km2", "kmLog") %>% # "zone3", "zone4", 
     paste0("abu ~ year + ", .) %>% 
@@ -152,6 +175,15 @@ model_viz(res$nsp, "nsp") +
 
 # ggsave("2. n_species.png", height = 8, width = 11, dpi = 600)
 
+# N_species rarefication --------------------------------------------------
+res$nsp100 <- c("km", "kmSegmented", "km + km2", "kmLog") %>% # "zone3", "zone4", 
+    paste0("nsp100 ~ year + ", .) %>% 
+    models_fit()
+res$nsp100
+model_viz(res$nsp100, "nsp100") + 
+    labs(x = NULL, y = "Количество видов",
+         subtitle = "Видовое богатство (разрежение: 100 экз.)")
+
 # Shannon -----------------------------------------------------------------
 res$shan <- c("km", "kmSegmented", "km + km2", "kmLog") %>% # "zone3", "zone4",
     paste0("shan ~ year + ", .) %>% 
@@ -169,13 +201,12 @@ div1 %>%
     
     ggplot(aes(km, abu, color = year))+ 
     geom_line(data = mutate(
-        rbind(res$abundance_log$d[[2]], res$nsp$d[[2]],res$shan$d[[2]]),
+        rbind(res$abundance_log$d[[2]], res$nsp$d[[2]], res$shan$d[[2]]),
         type = rep(c("abuLog", "nsp", "shan"), each = 128)),
         linetype = "dashed"
-    ) + 
+    ) +
     geom_point(shape = 21, size = 2) +
     facet_wrap(~type, scales = "free") + 
-    # facet_grid(cols = vars(year), rows = vars(type), scales = "free_y") + 
     labs(x = NULL, y = NULL)
 
 
@@ -183,6 +214,12 @@ res %>%
     map(~select(.x, -d, -fit)) %>% 
     writexl::write_xlsx(paste0("models_", Sys.Date(), ".xlsx"))
 
+res %>% 
+    `[`(-1) %>% 
+    map(~filter(.x, str_detect(ff, "Segmented"))) %>% 
+    map(~pull(.x, fit)) %>% 
+    flatten() %>% 
+    lapply(summary)
 
 
 
