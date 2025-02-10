@@ -129,10 +129,13 @@ distances %>%
     writexl::write_xlsx("export/distances.xlsx")
 
 # Permanova ---------------------------------------------------------------
-permanova <- vegan::adonis2(
-    dis ~ zone + year, data = wide1, 
-    by = "terms", permutations = 9999)
+permanova <- wide1 %>% 
+    mutate(zone = fct_collapse(.$zone, 
+        импактная = c("импактная", "суперимпактная"))) %>% 
+    vegan::adonis2(
+        dis ~ zone + year, data =., 
+        by = "terms", permutations = 9999)
 permanova %>% 
     rownames_to_column("term") %>% 
-    writexl::write_xlsx( "permanova.xlsx")
+    writexl::write_xlsx( "export/permanova.xlsx")
 
