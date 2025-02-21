@@ -195,24 +195,34 @@ model_viz(res$shan, "shan") +
 # ggsave("3. Shannon.png", height = 8, width = 11, dpi = 600)
 
 # final export ------------------------------------------------------------
+# Fig. 2
 div1 %>% 
-    select(year, km, abuLog = abu, nsp, shan) %>% 
+    select(year, km, 
+           A_abuLog = abu, C_nsp = nsp, 
+           D_nsp100 = nsp100, B_shan = shan) %>% 
     pivot_longer(names_to = "type", values_to = "abu", -1:-2) %>% 
-    
     ggplot(aes(km, abu, color = year))+ 
     geom_line(data = mutate(
-        rbind(res$abundance_log$d[[2]], res$nsp$d[[2]], res$shan$d[[2]]),
-        type = rep(c("abuLog", "nsp", "shan"), each = 128)),
+        rbind(
+            res$abundance_log$d[[2]], res$shan$d[[2]],
+            res$nsp$d[[2]], res$nsp100$d[[2]]),
+        type = rep(c("A_abuLog", "B_shan", "C_nsp", "D_nsp100"), each = 128)),
         linetype = "dashed"
     ) +
     geom_point(shape = 21, size = 2) +
-    facet_wrap(~type, scales = "free") + 
-    labs(x = NULL, y = NULL)
+    facet_wrap(
+        ~type,
+        scales = "free") + 
+    labs(x = "Distance, km", y = NULL, color = "Year")
+ggsave(paste0("export/Fig.2_segm_", Sys.Date(), ".png"), 
+       width = 6.5, height = 5.5, dpi = 600)
 
-
+# Tables 
 res %>% 
     map(~select(.x, -d, -fit)) %>% 
-    writexl::write_xlsx(paste0("export/models_all_", Sys.Date(), ".xlsx"))
+    writexl::write_xlsx(
+        paste0("export/models_all_", Sys.Date(), ".xlsx")
+    )
 
 res %>% 
     `[`(1:5) %>% 
@@ -227,24 +237,26 @@ res %>%
 # Supplement 3 ------------------------------------------------------------
 p <- gridExtra::grid.arrange(
     model_viz(res$abundance_log, "abu") + 
-        labs(x = NULL, y = "Обилие (особей на 100 лов.-сут.)", 
-             subtitle = "Модели логарифмированных показателей обилия") + 
+        labs(x = NULL, y = NULL, #"Обилие (особей на 100 лов.-сут.)", 
+             subtitle = "A") + 
         theme(legend.position = "none"),
     
     model_viz(res$nsp, "nsp") + 
-        labs(x = NULL, y = "Количество видов",
-             subtitle = "Видовое богатство") + 
+        labs(x = NULL, y = NULL, #"Количество видов",
+             subtitle = "B") + #Видовое богатство"
         theme(legend.position = "none"),
     
     model_viz(res$nsp100, "nsp100") + 
-        labs(x = NULL, y = "Количество видов",
-             subtitle = "Видовое богатство (разрежение: 100 экз.)")+ 
+        labs(x = NULL, y = NULL, #"Количество видов",
+             subtitle = "C") + #"Видовое богатство (разрежение: 100 экз.)")+ 
         theme(legend.position = "none"),
     
     model_viz(res$shan, "shan") + 
-        labs(x = NULL, y = "Индекс Шеннона",
-             subtitle = "Видовое разнообразие"),
-    ncol = 1
+        scale_color_discrete(labels = LETTERS[1:4]) + 
+        labs(x = NULL, y = NULL, #"Индекс Шеннона",
+             color = "Model", 
+             subtitle = "D"), #Видовое разнообразие"),
+    ncol = 1, widths = c(1)
 )
 
-ggsave("suppl_1.png", plot = p, width = 8, height = 12)
+ggsave(paste0("export/Suppl.3_", Sys.Date(), ".png"), plot = p, width = 8, height = 12)
