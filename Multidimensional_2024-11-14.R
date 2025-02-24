@@ -82,7 +82,8 @@ ggplot(aes(x = Axis.1, y = Axis.2, linetype = year,
          # fill = "Год", color = "Год", shape = "Год"
          ) +
     theme(panel.grid = element_blank())
-# ggsave("Plot5.svg", width = 18, height = 13, units = "cm")
+
+ggsave(paste0("export/Fig.3_ord_", Sys.Date(), ".svg"), width = 18, height = 13, units = "cm")
 
 # Distances ---------------------------------------------------------------
 distances <- list(
