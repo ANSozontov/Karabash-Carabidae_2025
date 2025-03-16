@@ -70,20 +70,28 @@ tables <- list(NA)
 
 # Rarefication ------------------------------------------------------------
 library(parallel)
+cl <- makeCluster(detectCores()-1)
 rar <- long %>% 
     group_by(year, zone, taxa) %>% 
     summarise(abu = sum(abu), .groups = "drop") %>% 
     unite("id", year, zone, sep = "_") %>% 
     split(.$id) %>% 
     map(~sort(.x$abu[.x$abu>0])) %>% 
-    mclapply(function(a){
+    parLapply(cl = cl, ., function(a){
+    # parlapply(function(a){
         a |> 
             as.character() |>
             as.numeric() |>
-            iNEXT::iNEXT(size = seq(0, 100, by = 2), nboot = 99, se = TRUE, conf = 0.99) |>
+            iNEXT::iNEXT(
+                size = seq(0, 100, by = 2), 
+                ### 999
+                nboot = 9, 
+                ### 999
+                se = TRUE, 
+                conf = 0.999) |>
             purrr::pluck("iNextEst", "size_based") |>
             dplyr::select(m, Method, qD, qD.LCL,   qD.UCL) 
-    } , mc.cores = getOption("mc.cores", min(c(8, parallel::detectCores())))) %>% 
+    }) %>% 
     map_df(rbind, .id = "id") %>% 
     as_tibble() %>% 
     separate(id, into = c("year", "zone"), sep = "_") %>% 
@@ -105,32 +113,37 @@ plots$raref <- rar %>%
 if(!export){plots$raref}
 
 # Models template ---------------------------------------------------------
-models_fit <- function(formulas){
-    fits <- tibble(ff = formulas) %>% 
-        split(1:nrow(.)) %>% 
-        lapply(function(a){ 
-            if(str_detect(a$ff, "Segmented")){
+models_fit <- function(x){
+    x %>% 
+        split(1:nrow(.)) %>%
+        lapply(function(y){
+            df <-  filter(div, year == y$year)
+            if(str_detect(y$formula, "Segmented")){
                 ###
                 segmented::segmented(lm(
-                    str_replace_all(a$ff, "Segmented", ""), 
-                    data = div), seg.Z = ~km)
+                    str_replace_all(y$formula, "Segmented", ""), 
+                    data = df), seg.Z = ~km)
                 ###
             } else {
-                lm(formula = a$ff, data = div)
+                lm(formula = y$formula, data = df)
             }
-        }) %>% 
-        tibble(ff = formulas, fit = .)
-    pred <- seq(1, 32, by = 0.5) %>% 
-        c(fits$fit[[2]]$psi[2]) %>% 
-        sort() %>% 
-        unique() %>%
-        expand_grid(
-            year = factor(c(2009, 2014)), 
-            km = .) %>%
-        mutate(
-            km2 = km^2, 
-            kmLog = log(km)
-        ) %>% 
+        })
+}
+
+models_pred <- function(fits){
+    lapply(fits, function(x){
+        c(if("segmented" %in% class(x)){x$psi[2]}else{numeric()}, seq(1, 32, by = 0.5)) %>% 
+            sort() %>% 
+            unique() %>%
+            tibble(
+                km = .,
+                km2 = .^2, 
+                kmLog = log(.)
+            ) %>% 
+            mutate(predicted = predict(x, .))
+    }
+)}
+    
         mutate(
             linear    = predict(fits$fit[[1]], .),
             segmented = predict(fits$fit[[2]], .),
@@ -179,9 +192,17 @@ model_viz <- function(df, yy){
 }
 
 # Abundance ---------------------------------------------------------------
-res$abundance <- c("km", "kmSegmented", "km + km2", "kmLog") %>% # "zone3", "zone4", 
-    paste0("abu ~ ", .) %>% 
-    models_fit()
+# res$abundance <- 
+expand_grid(
+        formula = paste0("abu ~ ", c("km", "kmSegmented", "km + km2", "kmLog")), 
+        year = c(2009, 2014)) %>% 
+    mutate(
+        fits = models_fit(.), 
+        pred = models_pred(fits), 
+        aic = map_dbl(fits, ~AIC(.x)), 
+        r2 = map_dbl(fits, ~summary(.x)$adj.r.squared)
+           ) # %>% arrange(year, aic)
+
 res$abundance
 model_viz(res$abundance, "abu") + 
     labs(x = NULL, y = "Обилие (особей на 100 лов.-сут.)", 
@@ -190,7 +211,7 @@ model_viz(res$abundance, "abu") +
 # ggsave("1a. Abundance.png", height = 8, width = 11, dpi = 600)
 
 # Abundance LLOG -----------------------------------------------------------
-res$abundance_log <- c("km", "kmSegmented", "km + km2", "kmLog") %>% # "zone3", "zone4", 
+res$abundance_log <- c("km", "kmSegmented", "km + km2", "kmLog") %>% 
     paste0("abuLog ~ year + ", .) %>% 
     models_fit()
 res$abundance_log
