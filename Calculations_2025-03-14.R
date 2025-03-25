@@ -8,7 +8,7 @@ theme_set(
             legend.position = "bottom"
         )
 )
-# L <- c("фон_2009", "фон_2014", "буф_2009", "буф_2014", "имп_2009", "имп_2014")
+
 long <- readxl::read_excel("Data/Carabidae_25.01.2023.xlsx", 
                            sheet = "main_data") %>% 
     filter(taxa != "no_insects") %>% 
