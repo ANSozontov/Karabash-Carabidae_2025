@@ -78,7 +78,6 @@ rar <- long %>%
     split(.$id) %>% 
     map(~sort(.x$abu[.x$abu>0])) %>% 
     parLapply(cl = cl, ., function(a){
-    # parlapply(function(a){
         a |> 
             as.character() |>
             as.numeric() |>
