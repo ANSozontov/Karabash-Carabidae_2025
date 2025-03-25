@@ -249,92 +249,6 @@ model_viz(res$shan, "shan") +
          subtitle = "Видовое разнообразие")
 # ggsave("3. Shannon.png", height = 8, width = 11, dpi = 600)
 
-# final export ------------------------------------------------------------
-# rarefaction fig
-ggsave(paste0("export/Fig.x_raref_", Sys.Date(), ".pdf"), plots$raref, 
-       width = 9, height = 5.5, dpi = 600)
-
-
-# Fig. 2
-div1 %>% 
-    select(year, km, 
-           A_abuLog = abu, C_nsp = nsp, 
-           D_nsp100 = nsp100, B_shan = shan) %>% 
-    pivot_longer(names_to = "type", values_to = "abu", -1:-2) %>% 
-    ggplot(aes(km, abu, color = year)) + 
-    geom_line(
-        # linetype = "dashed",
-        data = mutate(
-            rbind(
-                res$abundance_log$d[[2]], res$shan$d[[2]],
-                res$nsp$d[[2]], res$nsp100$d[[2]]),
-            type = rep(c("A_abuLog", "B_shan", "C_nsp", "D_nsp100"), each = 128))
-    ) +
-    geom_point(shape = 21, size = 2) +
-    facet_wrap(
-        ~type,
-        scales = "free") + 
-    labs(x = "Distance, km", y = NULL, color = "Year")
-ggsave(paste0("export/Fig.2_segm_", Sys.Date(), ".pdf"), 
-       width = 6.5, height = 5.5, dpi = 600)
-
-# Tables 
-res %>% 
-    map(~select(.x, -d, -fit)) %>% 
-    writexl::write_xlsx(
-        paste0("export/models_all_", Sys.Date(), ".xlsx")
-    )
-
-all_fits <- res %>% 
-    map(~dplyr::select(.x[2,], fit)[[1]]) %>% 
-    map(~.x[[1]])
-
-all_fits %>% 
-    lapply(summary) %>% 
-    lapply(capture.output) %>% 
-    map(~tibble(results = .)) %>% 
-    map2(
-        .,
-        all_fits %>% 
-            lapply(function(segmented_model){
-                
-                # psi
-                est <- segmented_model$psi["psi1.km", "Est."]
-                se <- segmented_model$psi["psi1.km", "St.Err"]
-                t.val <- est / se
-                psi_p.val <- 2 * pt(-abs(t.val), df = df.residual(segmented_model))
-                if(psi_p.val<0.0001){
-                    psi_p.val <- "<0.0001"
-                } else {
-                    psi_p.val <- round(psi_p.val)
-                }
-                
-                #km
-                coefs <- summary(segmented_model)$coefficients
-                covariance <- vcov(segmented_model)["km", "U1.km"]
-                
-                coef2 <- coefs["km","Estimate"] + coefs["U1.km","Estimate"]
-                se_coef2 <- sqrt(coefs["km","Std. Error"]^2 + coefs["U1.km","Std. Error"]^2 + 2 * covariance)
-                t.val <- coef2 / se_coef2
-                U1.km_p.val <- 2 * pt(-abs(t.val), df = df.residual(segmented_model) )
-                if(U1.km_p.val<0.0001){
-                    U1.km_p.val <- "<0.0001"
-                } else {
-                    U1.km_p.val <- round(U1.km_p.val, 4)
-                }
-                
-                #return
-                return(tibble(results = c(
-                    rep("", 2),
-                    "Custom results:",
-                    paste0("psi1.km p-value = ", psi_p.val),
-                    paste0("U1.km coeff = ", round(coef2, 3)),
-                    paste0("U1.km coeff SE = ", round(se_coef2, 3)),
-                    paste0("U1.km coeff_p.val = ", U1.km_p.val)
-                    )))
-            }),
-        ~rbind(.x, .y)) %>% 
-    writexl::write_xlsx(paste0("export/models_selected_", Sys.Date(), ".xlsx"))
 
 
 # Supplement 3 ------------------------------------------------------------
@@ -434,3 +348,90 @@ ggplot(pc, aes(x = Axis.1, y = Axis.2, linetype = year,
 ggsave(paste0("export/Fig.3_ord_", Sys.Date(), ".svg"), width = 18, height = 13, units = "cm")
 ggsave(paste0("export/Fig.3_ord_", Sys.Date(), ".png"), width = 18, height = 13, units = "cm")
 
+
+# final export ------------------------------------------------------------
+# rarefaction fig
+ggsave(paste0("export/Fig.x_raref_", Sys.Date(), ".pdf"), plots$raref, 
+       width = 9, height = 5.5, dpi = 600)
+
+
+# Fig. 2
+div1 %>% 
+    select(year, km, 
+           A_abuLog = abu, C_nsp = nsp, 
+           D_nsp100 = nsp100, B_shan = shan) %>% 
+    pivot_longer(names_to = "type", values_to = "abu", -1:-2) %>% 
+    ggplot(aes(km, abu, color = year)) + 
+    geom_line(
+        # linetype = "dashed",
+        data = mutate(
+            rbind(
+                res$abundance_log$d[[2]], res$shan$d[[2]],
+                res$nsp$d[[2]], res$nsp100$d[[2]]),
+            type = rep(c("A_abuLog", "B_shan", "C_nsp", "D_nsp100"), each = 128))
+    ) +
+    geom_point(shape = 21, size = 2) +
+    facet_wrap(
+        ~type,
+        scales = "free") + 
+    labs(x = "Distance, km", y = NULL, color = "Year")
+ggsave(paste0("export/Fig.2_segm_", Sys.Date(), ".pdf"), 
+       width = 6.5, height = 5.5, dpi = 600)
+
+# Tables 
+res %>% 
+    map(~select(.x, -d, -fit)) %>% 
+    writexl::write_xlsx(
+        paste0("export/models_all_", Sys.Date(), ".xlsx")
+    )
+
+all_fits <- res %>% 
+    map(~dplyr::select(.x[2,], fit)[[1]]) %>% 
+    map(~.x[[1]])
+
+all_fits %>% 
+    lapply(summary) %>% 
+    lapply(capture.output) %>% 
+    map(~tibble(results = .)) %>% 
+    map2(
+        .,
+        all_fits %>% 
+            lapply(function(segmented_model){
+                
+                # psi
+                est <- segmented_model$psi["psi1.km", "Est."]
+                se <- segmented_model$psi["psi1.km", "St.Err"]
+                t.val <- est / se
+                psi_p.val <- 2 * pt(-abs(t.val), df = df.residual(segmented_model))
+                if(psi_p.val<0.0001){
+                    psi_p.val <- "<0.0001"
+                } else {
+                    psi_p.val <- round(psi_p.val)
+                }
+                
+                #km
+                coefs <- summary(segmented_model)$coefficients
+                covariance <- vcov(segmented_model)["km", "U1.km"]
+                
+                coef2 <- coefs["km","Estimate"] + coefs["U1.km","Estimate"]
+                se_coef2 <- sqrt(coefs["km","Std. Error"]^2 + coefs["U1.km","Std. Error"]^2 + 2 * covariance)
+                t.val <- coef2 / se_coef2
+                U1.km_p.val <- 2 * pt(-abs(t.val), df = df.residual(segmented_model) )
+                if(U1.km_p.val<0.0001){
+                    U1.km_p.val <- "<0.0001"
+                } else {
+                    U1.km_p.val <- round(U1.km_p.val, 4)
+                }
+                
+                #return
+                return(tibble(results = c(
+                    rep("", 2),
+                    "Custom results:",
+                    paste0("psi1.km p-value = ", psi_p.val),
+                    paste0("U1.km coeff = ", round(coef2, 3)),
+                    paste0("U1.km coeff SE = ", round(se_coef2, 3)),
+                    paste0("U1.km coeff_p.val = ", U1.km_p.val)
+                )))
+            }),
+        ~rbind(.x, .y)) %>% 
+    writexl::write_xlsx(paste0("export/models_selected_", Sys.Date(), ".xlsx"))
