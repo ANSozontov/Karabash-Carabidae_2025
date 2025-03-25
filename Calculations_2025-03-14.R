@@ -250,6 +250,11 @@ model_viz(res$shan, "shan") +
 # ggsave("3. Shannon.png", height = 8, width = 11, dpi = 600)
 
 # final export ------------------------------------------------------------
+# rarefaction fig
+ggsave(paste0("export/Fig.x_raref_", Sys.Date(), ".pdf"), plots$raref, 
+       width = 9, height = 5.5, dpi = 600)
+
+
 # Fig. 2
 div1 %>% 
     select(year, km, 
