@@ -61,7 +61,7 @@ div <- tibble(wide[,1:5],
                                       MARGIN = 1, index = "shannon", base = exp(1))
 ) %>% 
     mutate(km2 = km^2, kmLog = log(km), .after = km) %>% 
-    mutate(abuLog = log(abu+1), .after = abu)
+    mutate(abuLog = log10(abu+1), .after = abu)
 
 rm(nsp_100)
 res <- list()
@@ -142,52 +142,27 @@ models_pred <- function(fits){
             mutate(predicted = predict(x, .))
     }
 )}
-{
-        mutate(
-            linear    = predict(fits$fit[[1]], .),
-            segmented = predict(fits$fit[[2]], .),
-            nonlinear = predict(fits$fit[[3]], .), 
-            logarithm = predict(fits$fit[[4]], .)
-        ) %>% 
-        dplyr::select(-km2, -kmLog)
-    if(str_detect(toupper(formulas[1]), "LOG")) {
-        pred <- pred %>% 
-            mutate_at(3:ncol(.), exp)
-    }
-    pred <- pred %>% 
-        `colnames<-`(c("year", "km", formulas)) %>% 
-        pivot_longer(names_to = "model", values_to = "abu", -c("year", "km"))
-    pred$model <-  map_chr(str_split(pred$model, "year \\+ "), ~.x[2])
-    pred <- pred %>% 
-        mutate(model = factor(model, 
-            levels = c("km", "kmSegmented", "km + km2", "kmLog")) # "zone3", "zone4", 
-        ) %>% 
-        split(.$model)
-    
-    fits %>% 
-        pull(fit) %>% 
-        lapply(function(a){
-            tibble(
-                aic = AIC(a), 
-                r2 = summary(a)$adj.r.squared, 
-                sh.test = round(shapiro.test(a$residuals)$p.value, 4)
-            ) 
-        }) %>% 
-        map_df(rbind) %>% 
-        tibble(fits, .) %>% 
-        mutate(d = pred)
-    }
 
-model_viz <- function(df, yy){
-    div1 %>% 
-        rename(yy = which(colnames(div1)==yy)) %>% 
-        ggplot(aes(x = km, y = yy)) + 
-        geom_line(aes(km, abu, color = model), data = map_dfr(df$d, rbind), 
-                  linewidth = 1) + 
-        geom_point(shape = 21, size = 3) + 
-        facet_wrap(~year, scales = "fixed", ncol = 2) +
+model_viz <- function(df0){
+    df1 <- df0 %>% 
+        unite("id", formula, year, sep = " ~ ") %>% 
+        pull(id) %>% 
+        `names<-`(df0$pred, .) %>% 
+        map(~select(.x, km, predicted)) %>% 
+        map_dfr(rbind, .id = "model") %>% 
+        separate(model, into = c("response", "model", "year"), sep = " ~ ")
+    
+    df2 <- div %>% 
+        select_at(c("km", predicted = df1$response[1], "year")) %>% 
+        mutate(model = NA)
+    
+    df1 %>% 
+        ggplot(aes(x = km, y = predicted, color = model, linetype = model)) +
+        geom_point(shape = 21, size = 3, data = df2, color = "black", alpha = 0.5) +
+        geom_line() + 
+        facet_wrap(~year, scales = "fixed", ncol = 2)  +
         theme(panel.grid = element_blank()) +
-        guides(fill="none")
+        guides(linetype = "none")
 }
 
 # Abundance ---------------------------------------------------------------
@@ -202,11 +177,11 @@ res$abundance <- expand_grid(
            ) %>% 
     arrange(year, aic)
 
-res$abundance
-model_viz(res$abundance, "abu") + 
-    labs(x = NULL, y = "Обилие (особей на 100 лов.-сут.)", 
-         subtitle = "Модели исходных показателей обилия")
-
+if(!export){res$abundance}
+plots$abundance <- model_viz(res$abundance) + 
+    labs(x = NULL, y = "individuals per 100 traps-days", 
+         subtitle = "Abundance")
+if(!export){plots$abundance}
 # ggsave("1a. Abundance.png", height = 8, width = 11, dpi = 600)
 
 # Abundance LLOG -----------------------------------------------------------
@@ -222,9 +197,12 @@ res$abundance_log <- expand_grid(
     arrange(year, aic)
 
 res$abundance_log
-model_viz(res$abundance_log, "abu") + 
-    labs(x = NULL, y = "Обилие (особей на 100 лов.-сут.)", 
-         subtitle = "Модели логарифмированных показателей обилия")
+plots$abundance_log <- model_viz(res$abundance_log) + 
+    # scale_y_continuous(breaks = 1:3, labels = 10^(1:3)) +
+    labs(x = NULL, y = "Log10 of individuals per 100 traps-days", 
+         subtitle = "log Abundance")
+
+if(!export){plots$abundance_log}
 # ggsave("1b. Abundance_log.png", height = 8, width = 11, dpi = 600)
 
 # N_species ---------------------------------------------------------------
@@ -239,34 +217,60 @@ res$nsp <- expand_grid(
     ) %>% 
     arrange(year, aic)
 res$nsp
-model_viz(res$nsp, "nsp") + 
-    labs(x = NULL, y = "Количество видов",
-         subtitle = "Видовое богатство")
+plots$nsp <- model_viz(res$nsp) + 
+    labs(x = NULL, y = "Number of species",
+         subtitle = "Number of species")
 
+if(!export){plots$nsp}
 # ggsave("2. n_species.png", height = 8, width = 11, dpi = 600)
 
 # N_species rarefication --------------------------------------------------
-res$nsp100 <- c("km", "kmSegmented", "km + km2", "kmLog") %>% # "zone3", "zone4", 
-    paste0("nsp100 ~ year + ", .) %>% 
-    models_fit()
+res$nsp100 <- expand_grid(
+    formula = paste0("nsp100 ~ ", c("km", "kmSegmented", "km + km2", "kmLog")), 
+    year = c(2009, 2014)) %>% 
+    mutate(
+        fits = models_fit(.), 
+        pred = models_pred(fits),
+        aic = map_dbl(fits, ~AIC(.x)), 
+        r2 = map_dbl(fits, ~summary(.x)$adj.r.squared)
+    ) %>% 
+    arrange(year, aic)
 res$nsp100
-model_viz(res$nsp100, "nsp100") + 
-    labs(x = NULL, y = "Количество видов",
-         subtitle = "Видовое богатство (разрежение: 100 экз.)")
+plots$nsp100 <- model_viz(res$nsp100) + 
+    labs(x = NULL, y = "Number of species per 100 individuals",
+         subtitle = "Number of species rarefied to 100 individuals")
+if(!export){plots$nsp100}
 
 # Shannon -----------------------------------------------------------------
-res$shan <- c("km", "kmSegmented", "km + km2", "kmLog") %>% # "zone3", "zone4",
-    paste0("shan ~ year + ", .) %>% 
-    models_fit()
+res$shan <- expand_grid(
+    formula = paste0("shan ~ ", c("km", "kmSegmented", "km + km2", "kmLog")), 
+    year = c(2009, 2014)) %>% 
+    mutate(
+        fits = models_fit(.), 
+        pred = models_pred(fits),
+        aic = map_dbl(fits, ~AIC(.x)), 
+        r2 = map_dbl(fits, ~summary(.x)$adj.r.squared)
+    ) %>% 
+    arrange(year, aic)
 res$shan
-model_viz(res$shan, "shan") + 
-    labs(x = NULL, y = "Индекс Шеннона",
-         subtitle = "Видовое разнообразие")
+plots$shan <- model_viz(res$shan) + 
+    labs(x = NULL, y = "Shannon index",
+         subtitle = "Diversity")
+if(!export){plots$shan}
 # ggsave("3. Shannon.png", height = 8, width = 11, dpi = 600)
 
-
-
 # Supplement 3 ------------------------------------------------------------
+
+
+gridExtra::grid.arrange(
+    plots$abundance + guides(color = "none"), 
+    plots$abundance_log + guides(color = "none"), 
+    plots$nsp + guides(color = "none"), 
+    plots$nsp100 + guides(color = "none"), 
+    plots$shan + guides(color = "none"), 
+    ncol = 1
+)
+
 p <- gridExtra::grid.arrange(
     model_viz(res$abundance_log, "abu") + 
         labs(x = NULL, y = NULL, #"Обилие (особей на 100 лов.-сут.)", 
@@ -368,6 +372,16 @@ ggsave(paste0("export/Fig.3_ord_", Sys.Date(), ".png"), width = 18, height = 13,
 # rarefaction fig
 ggsave(paste0("export/Fig.x_raref_", Sys.Date(), ".pdf"), plots$raref, 
        width = 9, height = 5.5, dpi = 600)
+
+pdf("export/multipage_plots.pdf")
+for(i in c("abundance", "abundance_log", "nsp", "nsp100", "shan")){
+    res[[i]] %>% 
+        select(-fits, -pred) %>% 
+        mutate(aic = round(aic, 1), r2 = round(r2, 2)) %>% 
+        tableGrob(rows = NULL) %>% 
+        grid.arrange(plots[[i]], ., ncol = 1, heights = c(2,1))
+}
+dev.off()
 
 
 # Fig. 2
