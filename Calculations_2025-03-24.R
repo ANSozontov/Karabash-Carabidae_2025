@@ -167,6 +167,20 @@ manual_aic <- function (a, df_observed = NA, k = 2, simple = TRUE){
     }
 }
 
+coeffs_compars <- function(a){}
+b <- a %>% 
+    filter(str_detect(formula, "Segment")) %>% 
+    select(year, fits) 
+b %>% 
+    pluck("fits") %>% 
+    `names<-`(b$year) %>% 
+    lapply(summary)
+
+`names<-`(.$year) %>% str
+    map(~pluck(.x, 2))
+    
+    column_to_rownames("formula")
+    list(.$fits, names)
 
 model_viz <- function(df0){
     df1 <- df0 %>% 
