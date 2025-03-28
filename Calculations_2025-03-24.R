@@ -143,6 +143,31 @@ models_pred <- function(fits){
     }
 )}
 
+# old manual AIC
+# manual.aic <- function(a){
+#     if(!(a$family$family %in% c("quasipoisson", "poisson"))){return(NA)}
+#     loglik <- sum(dpois(a$model[,1], fitted.values(a), log = TRUE))
+#     phi <- summary(a)$dispersion
+#     -2 * loglik + 2 * summary(a)$df[3] * phi
+# }
+
+# derived from "AIC.default"
+manual_aic <- function (a, df_observed = NA, k = 2, simple = TRUE){
+    lls <- logLik(a)
+    # lls is logLik observer
+    if(is.na(df_observed)){
+        df_observed <- attr(lls, "df")
+    }
+    if(simple){
+        -2 * as.numeric(lls) + k * df_observed
+    } else {
+        data.frame(
+            df = df_observed, 
+            AIC = -2 * as.numeric(lls) + k * df_observed)
+    }
+}
+
+
 model_viz <- function(df0){
     df1 <- df0 %>% 
         unite("id", formula, year, sep = " ~ ") %>% 
