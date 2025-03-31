@@ -167,7 +167,7 @@ manual_aic <- function (a, df_observed = NA, k = 2, simple = TRUE){
     }
 }
 
-coeffs_compars <- function(a, multip = 1.5){
+models_coeffs <- function(a, multip = 1.5){
 b <- a %>% 
     filter(str_detect(formula, "Segment")) %>% 
     select(year, fits)
@@ -223,9 +223,48 @@ model_viz_supp <- function(df0){
         guides(linetype = "none")
 }
 
-
+model_viz_text <- function(df0){
+    df0 <- filter(df0, str_detect(formula, "Segmented")) 
+    df1 <- df0 %>% 
+        unite("id", formula, year, sep = " ~ ") %>% 
+        pull(id) %>% 
+        `names<-`(df0$pred, .) %>% 
+        map(~select(.x, km, predicted)) %>% 
+        map_dfr(rbind, .id = "model") %>% 
+        separate(model, into = c("response", "model", "year"), sep = " ~ ")
+    
+    df2 <- div %>% 
+        select_at(c("km", predicted = df1$response[1], "year"))
+    
+    df1 %>% 
+        ggplot(aes(x = km, y = predicted, color = year, shape = year, linetype = year)) +
+        geom_point(size = 3, data = df2, alpha = 0.5) +
+        geom_line() + 
+        # labs(x = xx, y = yy, subtitle = tt) +
+        scale_x_continuous(limits = c(0.1, 32)) +
+        theme(panel.grid = element_blank()) +
+        guides(linetype = "none")
+}
 
 # Abundance ---------------------------------------------------------------
+models <- expand_grid(
+    resp = c("abu", "abuLog", "nsp", "nsp100", "shan"),
+    formula = c("km", "kmSegmented", "km + km2", "kmLog"), 
+    year = c(2009, 2014)) %>% 
+    mutate(
+        formula = paste0(resp, " ~ ", formula)) %>% 
+    mutate(fits = models_fit(.), 
+        pred = models_pred(fits),
+        aic = map_dbl(fits, ~AIC(.x)), 
+        r2 = map_dbl(fits, ~summary(.x)$adj.r.squared)
+    ) 
+
+models %>% 
+    mutate(aic2 = map_dbl(fits, ~manual_aic(.x, df_observed = 3)), 
+           aic2 = case_when(str_detect(formula, "Segm") ~ aic2, TRUE ~ aic),
+           .after = aic) %>% 
+    arrange(resp, year, aic2)
+
 res$abundance <- expand_grid(
         formula = paste0("abu ~ ", c("km", "kmSegmented", "km + km2", "kmLog")), 
         year = c(2009, 2014)) %>% 
@@ -238,11 +277,18 @@ res$abundance <- expand_grid(
     arrange(year, aic)
 
 if(!export){res$abundance}
-plots$abundance <- model_viz(res$abundance) + 
+
+plots$abundance_s <- model_viz_supp(res$abundance) + 
     labs(x = NULL, y = "individuals per 100 traps-days", 
          subtitle = "Abundance")
-if(!export){plots$abundance}
-# ggsave("1a. Abundance.png", height = 8, width = 11, dpi = 600)
+if(!export){plots$abundance_s}
+
+plots$abundance_t <- model_viz_text(res$abundance) + 
+    labs(x = NULL, y = "individuals per 100 traps-days", 
+         subtitle = "Abundance")
+if(!export){plots$abundance_t}
+
+if(!export){models_coeffs(res$abundance, 1.5)}
 
 # Abundance LLOG -----------------------------------------------------------
 res$abundance_log <- expand_grid(
@@ -436,6 +482,8 @@ if(export){
         paste0("export/Fig.x_raref_", Sys.Date(), ".pdf"), 
         plots$raref, 
         width = 9, height = 5.5, dpi = 600)
+
+    ggsave(paste0("export/Fig.1a. Abundance_", Sys.Date(), ".png"), height = 8, width = 11, dpi = 600)
 }
 
 pdf("export/multipage_plots.pdf")
