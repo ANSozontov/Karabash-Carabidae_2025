@@ -483,11 +483,37 @@ if(export){
     # models tables
     models %>% 
         map(~select(.x, -resp, -fits, -pred)) %>% 
-        map(~mutate_if(.x, is.numeric, ~round(.x, 2)))
-    # models pics
+        map(~mutate_if(.x, is.numeric, ~round(.x, 2))) %>% 
+        writexl::write_xlsx(
+            paste0("export/models_all_", Sys.Date(), ".xlsx")
+        )
     
+    comps %>% 
+        writexl::write_xlsx(
+            paste0("export/models_comp_", Sys.Date(), ".xlsx")
+        )
     
-    ggsave(paste0("export/Fig.1a. Abundance_", Sys.Date(), ".png"), height = 8, width = 11, dpi = 600)
+    # models pics text
+    plots_text %>% 
+        `[`(-1) %>% 
+        map2(
+            names(.), 
+            ~ggsave(
+                plot = .x, 
+                filename = paste0("export/Fig.1_", .y, Sys.Date(), ".png"), 
+                height = 8, width = 11, dpi = 600)
+        )
+    
+    # models pics suppl.
+    plots_suppl %>% 
+        `[`(-1) %>% 
+        map2(
+            names(.), 
+            ~ggsave(
+                plot = .x, 
+                filename = paste0("export/Suppl.1_", .y, Sys.Date(), ".png"), 
+                height = 8, width = 11, dpi = 600)
+        )
 }
 
 pdf("export/multipage_plots.pdf")
