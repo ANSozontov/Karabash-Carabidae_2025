@@ -257,38 +257,35 @@ models <- expand_grid(
         pred = models_pred(fits),
         aic = map_dbl(fits, ~AIC(.x)), 
         r2 = map_dbl(fits, ~summary(.x)$adj.r.squared)
-    ) 
-
-models %>% 
+    ) %>% 
     mutate(aic2 = map_dbl(fits, ~manual_aic(.x, df_observed = 3)), 
            aic2 = case_when(str_detect(formula, "Segm") ~ aic2, TRUE ~ aic),
            .after = aic) %>% 
-    arrange(resp, year, aic2)
+    arrange(resp, year, aic2) %>% 
+    split(.$resp)
 
-res$abundance <- expand_grid(
-        formula = paste0("abu ~ ", c("km", "kmSegmented", "km + km2", "kmLog")), 
-        year = c(2009, 2014)) %>% 
-    mutate(
-        fits = models_fit(.), 
-        pred = models_pred(fits),
-        aic = map_dbl(fits, ~AIC(.x)), 
-        r2 = map_dbl(fits, ~summary(.x)$adj.r.squared)
-           ) %>% 
-    arrange(year, aic)
-
-if(!export){res$abundance}
-
-plots$abundance_s <- model_viz_supp(res$abundance) + 
+if(!export){models}
+labs <- list(
     labs(x = NULL, y = "individuals per 100 traps-days", 
-         subtitle = "Abundance")
-if(!export){plots$abundance_s}
+         subtitle = "Abundance"), 
+    labs(x = NULL, y = "Log10 of individuals per 100 traps-days", 
+         subtitle = "log Abundance"), 
+    labs(x = NULL, y = "Number of species",
+         subtitle = "Number of species"), 
+    labs(x = NULL, y = "Number of species per 100 individuals",
+         subtitle = "Number of species rarefied to 100 individuals"),
+    labs(x = NULL, y = "Shannon index", subtitle = "Diversity")  
+)
+plots_suppl <- map2(models, labs, ~model_viz_supp(.x)+.y)
 
-plots$abundance_t <- model_viz_text(res$abundance) + 
-    labs(x = NULL, y = "individuals per 100 traps-days", 
-         subtitle = "Abundance")
-if(!export){plots$abundance_t}
+if(!export){plots_suppl}
 
-if(!export){models_coeffs(res$abundance, 1.5)}
+plots_text <- map2(models, labs, ~model_viz_text(.x)+.y)
+
+if(!export){plots_text}
+
+comps <- map(models, ~models_coeffs(.x, 1.5))
+if(!export){comps}
 
 # Abundance LLOG -----------------------------------------------------------
 res$abundance_log <- expand_grid(
@@ -482,7 +479,14 @@ if(export){
         paste0("export/Fig.x_raref_", Sys.Date(), ".pdf"), 
         plots$raref, 
         width = 9, height = 5.5, dpi = 600)
-
+    
+    # models tables
+    models %>% 
+        map(~select(.x, -resp, -fits, -pred)) %>% 
+        map(~mutate_if(.x, is.numeric, ~round(.x, 2)))
+    # models pics
+    
+    
     ggsave(paste0("export/Fig.1a. Abundance_", Sys.Date(), ".png"), height = 8, width = 11, dpi = 600)
 }
 
