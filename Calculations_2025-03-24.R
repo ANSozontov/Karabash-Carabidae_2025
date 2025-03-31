@@ -167,22 +167,41 @@ manual_aic <- function (a, df_observed = NA, k = 2, simple = TRUE){
     }
 }
 
-coeffs_compars <- function(a){}
+coeffs_compars <- function(a, multip = 1.5){
 b <- a %>% 
     filter(str_detect(formula, "Segment")) %>% 
-    select(year, fits) 
-b %>% 
+    select(year, fits)
+b <- b %>% 
     pluck("fits") %>% 
     `names<-`(b$year) %>% 
-    lapply(summary)
+    lapply(summary) %>% 
+    map(~list(.x$coefficients, .x$psi)) %>% 
+    map(~map(.x, ~rownames_to_column(as.data.frame(.x), "pred"))) %>% 
+    map_dfr(~rbind(
+            select(.x[[1]], pred, `Est.` = 2, `St.Err` = 3), 
+            transmute(.x[[2]], pred, `Est.`, `St.Err`)
+            ) %>% 
+            filter(Est. != 0, pred %in% c("km", "psi1.km")), 
+        .id = "year"
+        ) %>% 
+    split(.$pred) %>% 
+    map(~arrange(.x, Est.))
 
-`names<-`(.$year) %>% str
-    map(~pluck(.x, 2))
-    
-    column_to_rownames("formula")
-    list(.$fits, names)
+r1 <- b %>% 
+    map(~.x %>% 
+            mutate_if(is.numeric, ~round(.x, 3)) %>% 
+            unite("i", Est., St.Err, sep = "±") %>% 
+            pivot_wider(names_from = year, values_from = i)
+    )
+r2 <- b %>% map(~ .x$Est.[2] - multip*.x$St.Err[2] - .x$Est.[1] - multip*.x$St.Err[1]) %>% 
+        map(~tibble(dd = .x))
 
-model_viz <- function(df0){
+list(r1, r2) %>% 
+    transpose() %>% 
+    map_dfr(~cbind(.x[[1]], .x[[2]]))
+}
+
+model_viz_supp <- function(df0){
     df1 <- df0 %>% 
         unite("id", formula, year, sep = " ~ ") %>% 
         pull(id) %>% 
@@ -203,6 +222,8 @@ model_viz <- function(df0){
         theme(panel.grid = element_blank()) +
         guides(linetype = "none")
 }
+
+
 
 # Abundance ---------------------------------------------------------------
 res$abundance <- expand_grid(
@@ -407,10 +428,15 @@ ggsave(paste0("export/Fig.3_ord_", Sys.Date(), ".svg"), width = 18, height = 13,
 ggsave(paste0("export/Fig.3_ord_", Sys.Date(), ".png"), width = 18, height = 13, units = "cm")
 
 
-# final export ------------------------------------------------------------
-# rarefaction fig
-ggsave(paste0("export/Fig.x_raref_", Sys.Date(), ".pdf"), plots$raref, 
-       width = 9, height = 5.5, dpi = 600)
+# Export ------------------------------------------------------------
+
+if(export){
+    # rarefaction fig
+    ggsave(
+        paste0("export/Fig.x_raref_", Sys.Date(), ".pdf"), 
+        plots$raref, 
+        width = 9, height = 5.5, dpi = 600)
+}
 
 pdf("export/multipage_plots.pdf")
 for(i in c("abundance", "abundance_log", "nsp", "nsp100", "shan")){
