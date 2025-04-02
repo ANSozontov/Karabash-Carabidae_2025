@@ -246,7 +246,7 @@ model_viz_text <- function(df0){
         guides(linetype = "none")
 }
 
-# Abundance ---------------------------------------------------------------
+# Models calculation ------------------------------------------------------
 models <- expand_grid(
     resp = c("abu", "abuLog", "nsp", "nsp100", "shan"),
     formula = c("km", "kmSegmented", "km + km2", "kmLog"), 
@@ -276,91 +276,16 @@ labs <- list(
          subtitle = "Number of species rarefied to 100 individuals"),
     labs(x = NULL, y = "Shannon index", subtitle = "Diversity")  
 )
-plots_suppl <- map2(models, labs, ~model_viz_supp(.x)+.y)
+plots$suppl <- map2(models, labs, ~model_viz_supp(.x)+.y)
 
-if(!export){plots_suppl}
+if(!export){plots$suppl}
 
-plots_text <- map2(models, labs, ~model_viz_text(.x)+.y)
+plots$text <- map2(models, labs, ~model_viz_text(.x)+.y)
 
-if(!export){plots_text}
+if(!export){plots$text}
 
-comps <- map(models, ~models_coeffs(.x, 1.5))
-if(!export){comps}
-
-# Abundance LLOG -----------------------------------------------------------
-res$abundance_log <- expand_grid(
-    formula = paste0("abuLog ~ ", c("km", "kmSegmented", "km + km2", "kmLog")), 
-    year = c(2009, 2014)) %>% 
-    mutate(
-        fits = models_fit(.), 
-        pred = models_pred(fits),
-        aic = map_dbl(fits, ~AIC(.x)), 
-        r2 = map_dbl(fits, ~summary(.x)$adj.r.squared)
-    ) %>% 
-    arrange(year, aic)
-
-res$abundance_log
-plots$abundance_log <- model_viz(res$abundance_log) + 
-    # scale_y_continuous(breaks = 1:3, labels = 10^(1:3)) +
-    labs(x = NULL, y = "Log10 of individuals per 100 traps-days", 
-         subtitle = "log Abundance")
-
-if(!export){plots$abundance_log}
-# ggsave("1b. Abundance_log.png", height = 8, width = 11, dpi = 600)
-
-# N_species ---------------------------------------------------------------
-res$nsp <- expand_grid(
-    formula = paste0("nsp ~ ", c("km", "kmSegmented", "km + km2", "kmLog")), 
-    year = c(2009, 2014)) %>% 
-    mutate(
-        fits = models_fit(.), 
-        pred = models_pred(fits),
-        aic = map_dbl(fits, ~AIC(.x)), 
-        r2 = map_dbl(fits, ~summary(.x)$adj.r.squared)
-    ) %>% 
-    arrange(year, aic)
-res$nsp
-plots$nsp <- model_viz(res$nsp) + 
-    labs(x = NULL, y = "Number of species",
-         subtitle = "Number of species")
-
-if(!export){plots$nsp}
-# ggsave("2. n_species.png", height = 8, width = 11, dpi = 600)
-
-# N_species rarefication --------------------------------------------------
-res$nsp100 <- expand_grid(
-    formula = paste0("nsp100 ~ ", c("km", "kmSegmented", "km + km2", "kmLog")), 
-    year = c(2009, 2014)) %>% 
-    mutate(
-        fits = models_fit(.), 
-        pred = models_pred(fits),
-        aic = map_dbl(fits, ~AIC(.x)), 
-        r2 = map_dbl(fits, ~summary(.x)$adj.r.squared)
-    ) %>% 
-    arrange(year, aic)
-res$nsp100
-plots$nsp100 <- model_viz(res$nsp100) + 
-    labs(x = NULL, y = "Number of species per 100 individuals",
-         subtitle = "Number of species rarefied to 100 individuals")
-if(!export){plots$nsp100}
-
-# Shannon -----------------------------------------------------------------
-res$shan <- expand_grid(
-    formula = paste0("shan ~ ", c("km", "kmSegmented", "km + km2", "kmLog")), 
-    year = c(2009, 2014)) %>% 
-    mutate(
-        fits = models_fit(.), 
-        pred = models_pred(fits),
-        aic = map_dbl(fits, ~AIC(.x)), 
-        r2 = map_dbl(fits, ~summary(.x)$adj.r.squared)
-    ) %>% 
-    arrange(year, aic)
-res$shan
-plots$shan <- model_viz(res$shan) + 
-    labs(x = NULL, y = "Shannon index",
-         subtitle = "Diversity")
-if(!export){plots$shan}
-# ggsave("3. Shannon.png", height = 8, width = 11, dpi = 600)
+tables$comps <- map(models, ~models_coeffs(.x, 1.5))
+if(!export){tables$comps}
 
 # Supplement 3 ------------------------------------------------------------
 
@@ -400,7 +325,8 @@ p <- gridExtra::grid.arrange(
 
 ggsave(paste0("export/Suppl.3_", Sys.Date(), ".pdf"), plot = p, width = 8, height = 12)
 
-# Multidimensional count --------------------------------------------------
+# Multidimensional  --------------------------------------------------
+# Multidimensional count
 dis <- wide %>% 
     select(-site) %>% 
     unite("ID", zone, year, km, plot, sep = "_") %>% 
@@ -451,7 +377,7 @@ distances %>%
     mutate_if(is.numeric, function(a){round(a, 2)}) %>% 
     writexl::write_xlsx(paste0("export/distances_", Sys.Date(), ".xlsx"))
 
-# Multidimensional viz ----------------------------------------------------
+# Multidimensional viz 
 ggplot(pc, aes(x = Axis.1, y = Axis.2, linetype = year,
         fill = zone, color = zone, shape = year)) +
     geom_point(color = "black", size = 2.5) +  
@@ -488,30 +414,30 @@ if(export){
             paste0("export/models_all_", Sys.Date(), ".xlsx")
         )
     
-    comps %>% 
+    tables$comps %>% 
         writexl::write_xlsx(
             paste0("export/models_comp_", Sys.Date(), ".xlsx")
         )
     
     # models pics text
-    plots_text %>% 
+    plots$text %>% 
         `[`(-1) %>% 
         map2(
             names(.), 
             ~ggsave(
                 plot = .x, 
-                filename = paste0("export/Fig.1_", .y, Sys.Date(), ".png"), 
+                filename = paste0("export/Fig.1_", .y, "_", Sys.Date(), ".png"), 
                 height = 8, width = 11, dpi = 600)
         )
     
     # models pics suppl.
-    plots_suppl %>% 
+    plots$suppl %>% 
         `[`(-1) %>% 
         map2(
             names(.), 
             ~ggsave(
                 plot = .x, 
-                filename = paste0("export/Suppl.1_", .y, Sys.Date(), ".png"), 
+                filename = paste0("export/Suppl.1_", .y, "_", Sys.Date(), ".png"), 
                 height = 8, width = 11, dpi = 600)
         )
 }
