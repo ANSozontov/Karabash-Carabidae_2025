@@ -167,7 +167,7 @@ manual_aic <- function (a, df_observed = NA, k = 2, simple = TRUE){
     }
 }
 
-models_coeffs <- function(a, multip = 1.5){
+models_coeffs <- function(a, multip = 2){
 b <- a %>% 
     filter(str_detect(formula, "Segment")) %>% 
     select(year, fits)
@@ -187,27 +187,25 @@ b <- b %>%
     split(.$pred) %>% 
     map(~arrange(.x, Est.))
 
-multip = 2
-# r1 <- 
 b %>% 
     map_dfr(rbind) %>% 
     mutate_if(is.numeric, ~round(.x, 3)) %>% 
-    mutate(CI = paste0("(", Est. - St.Err, "; ", Est. + St.Err, ")"),
+    mutate(CI = paste0("(", Est. - multip*St.Err, "; ", Est. + multip*St.Err, ")"),
            E = paste0(Est., "±", St.Err), 
-           .keep = "unused") %>% 
-    
-    map(~.x %>% 
-            mutate_if(is.numeric, ~round(.x, 3)) %>% 
-            unite("i", Est., St.Err, sep = "±") %>% 
-            pivot_wider(names_from = year, values_from = i)
-    )
-r2 <- b %>% 
-    map(~ .x$Est.[2] - multip*.x$St.Err[2] - .x$Est.[1] - multip*.x$St.Err[1]) %>% 
-    map(~tibble(dd = .x))
-
-list(r1, r2) %>% 
-    transpose() %>% 
-    map_dfr(~cbind(.x[[1]], .x[[2]]))
+           .keep = "unused") 
+#     
+#     map(~.x %>% 
+#             mutate_if(is.numeric, ~round(.x, 3)) %>% 
+#             unite("i", Est., St.Err, sep = "±") %>% 
+#             pivot_wider(names_from = year, values_from = i)
+#     )
+# r2 <- b %>% 
+#     map(~ .x$Est.[2] - multip*.x$St.Err[2] - .x$Est.[1] - multip*.x$St.Err[1]) %>% 
+#     map(~tibble(dd = .x))
+# 
+# list(r1, r2) %>% 
+#     transpose() %>% 
+#     map_dfr(~cbind(.x[[1]], .x[[2]]))
 }
 
 model_viz_supp <- function(df0){
@@ -245,11 +243,25 @@ model_viz_text <- function(df0){
     df2 <- div %>% 
         select_at(c("km", predicted = df1$response[1], "year"))
     
+    df3 <- transmute(
+        df0, 
+        year = as.character(year), 
+        xi = map_dbl(df0$fits, ~summary(.x)$psi[2]), 
+        ci = map_dbl(df0$fits, ~summary(.x)$psi[3])*2)
+    
     df1 %>% 
-        ggplot(aes(x = km, y = predicted, color = year, shape = year, linetype = year)) +
+        ggplot(aes(x = km, y = predicted, color = year, shape = year)) + # , linetype = year
+        geom_vline(
+            mapping = aes(xintercept = xi, color =  year), 
+            data = df3, alpha = 0.8, linetype = "dashed") +
+        geom_vline(
+            mapping = aes(xintercept = xi+ci, color =  year), 
+            data = df3, alpha = 0.8, linetype = "dotted") +
+        geom_vline(
+            mapping = aes(xintercept = xi-ci, color =  year), 
+            data = df3, alpha = 0.8, linetype = "dotted") +
         geom_point(size = 3, data = df2, alpha = 0.5) +
         geom_line() + 
-        # labs(x = xx, y = yy, subtitle = tt) +
         scale_x_continuous(limits = c(0.1, 32)) +
         theme(panel.grid = element_blank()) +
         guides(linetype = "none")
@@ -293,11 +305,19 @@ plots$text <- map2(models, labs, ~model_viz_text(.x)+.y)
 
 if(!export){plots$text}
 
-tables$comps <- map(models, ~models_coeffs(.x, 1.5))
+tables$comps <- map(models, ~models_coeffs(.x, 2))
 if(!export){tables$comps}
 
-# Supplement 3 ------------------------------------------------------------
+tables$comps_wide <- tables$comps %>% 
+    map(~.x %>% 
+            pivot_longer(names_to = "i", values_to = "val", -1:-2) %>% 
+            unite("pred", pred, i, sep = "_") %>% 
+            pivot_wider(names_from = pred, values_from = val)
+    )
+if(!export){tables$comps_wide}
+            
 
+# Supplement 3 ------------------------------------------------------------
 
 gridExtra::grid.arrange(
     plots$abundance + guides(color = "none"), 
@@ -426,6 +446,11 @@ if(export){
     tables$comps %>% 
         writexl::write_xlsx(
             paste0("export/models_comp_", Sys.Date(), ".xlsx")
+        )
+    tables$comps_wide %>% 
+        map_dfr(rbind, .id = "response") %>% 
+        writexl::write_xlsx(
+            paste0("export/models_comp_wide", Sys.Date(), ".xlsx")
         )
     
     # models pics text
