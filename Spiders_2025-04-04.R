@@ -8,20 +8,26 @@ theme_set(
             legend.position = "bottom"
         )
 )
-
-long <- readxl::read_excel("Data/spiders_2024.xlsx")  %>% 
-    select(year = 1, tur = 3, zone = 4, km = 6, plot = 7, days = 11, traps = 12, g = 14, s = 15, num = 32) %>% 
-    filter(!is.na(s)) %>% 
-    unite("taxa", g, s, sep = "_") %>% 
+long <- "https://docs.google.com/spreadsheets/d/" %>% 
+    paste0("1RnIxmGPk3i-KsUrC3MNV3qGu7jhMYTI3E_X5hMQF1_g/edit?gid=0#gid=0") %>% 
+    rio::import() %>% 
+    as_tibble %>% 
+    arrange(desc(site), taxa) %>% 
     mutate(
-        year = as.factor(year),
-        abu = num / traps / days * 100, 
-        km = as.numeric(str_extract(km, "[:digit:]+")),
-        zone = factor(zone, levels = c("F", "B", "Im", "Pst")),
-        zone = fct_recode(zone, "background" = "F", "impact" = "Im", "buffer" = "B",
-                             "industrial barren" = "Pst"),
-        .keep = "unused"
-        )
+        zone = case_when(
+            zone == "F" ~ "background", 
+            zone == "B" ~ "bufer", 
+            zone == "Im" ~ "impact", 
+            zone == "Pst" ~ "industrial barren"),
+        zone = factor(zone),
+        km = str_extract(site, "[:digit:]{1,}"),
+        km = as.numeric(km), 
+        year = factor(year),
+        tur = factor(tur), 
+        site = fct_inorder(site),
+        abu = num/n_days/n_traps*100, 
+        .after = site) %>% 
+    select(year:km, plot, taxa, abu)
 
 # 1 = turs 1 and 2 are united (sum)
 wide <- long %>% 
@@ -32,7 +38,7 @@ wide <- long %>%
                 values_fn = sum, values_fill = 0)
 
 nsp_100 <- wide %>% 
-    select(-zone) %>%
+    select(-zone, -site) %>%
     unite("id", year, km, plot, sep = "_") %>% 
     column_to_rownames("id") %>% 
     t %>% 
@@ -184,18 +190,25 @@ b <- b %>%
     split(.$pred) %>% 
     map(~arrange(.x, Est.))
 
-r1 <- b %>% 
-    map(~.x %>% 
-            mutate_if(is.numeric, ~round(.x, 3)) %>% 
-            unite("i", Est., St.Err, sep = "±") %>% 
-            pivot_wider(names_from = year, values_from = i)
-    )
-r2 <- b %>% map(~ .x$Est.[2] - multip*.x$St.Err[2] - .x$Est.[1] - multip*.x$St.Err[1]) %>% 
-        map(~tibble(dd = .x))
+b %>% 
+    map_dfr(rbind) %>% 
+    mutate_if(is.numeric, ~round(.x, 3)) %>% 
+    mutate(CI = paste0("(", Est. - multip*St.Err, "; ", Est. + multip*St.Err, ")"),
+           E = paste0(Est., "±", St.Err), 
+           .keep = "unused") 
 
-list(r1, r2) %>% 
-    transpose() %>% 
-    map_dfr(~cbind(.x[[1]], .x[[2]]))
+# r1 <- b %>% 
+#     map(~.x %>% 
+#             mutate_if(is.numeric, ~round(.x, 3)) %>% 
+#             unite("i", Est., St.Err, sep = "±") %>% 
+#             pivot_wider(names_from = year, values_from = i)
+#     )
+# r2 <- b %>% map(~ .x$Est.[2] - multip*.x$St.Err[2] - .x$Est.[1] - multip*.x$St.Err[1]) %>% 
+#         map(~tibble(dd = .x))
+# 
+# list(r1, r2) %>% 
+#     transpose() %>% 
+#     map_dfr(~cbind(.x[[1]], .x[[2]]))
 }
 
 model_viz_supp <- function(df0){
@@ -262,8 +275,8 @@ models <- expand_grid(
 
 if(!export){models}
 labs <- list(
-    labs(x = NULL, y = "individuals per 100 traps-days", 
-         subtitle = "Abundance"), 
+    # labs(x = NULL, y = "individuals per 100 traps-days", 
+    #      subtitle = "Abundance"), 
     labs(x = NULL, y = "Log10 of individuals per 100 traps-days", 
          subtitle = "log Abundance"), 
     labs(x = NULL, y = "Number of species",
@@ -280,13 +293,21 @@ plots$text <- map2(models, labs, ~model_viz_text(.x)+.y)
 
 if(!export){plots$text}
 
-tables$comps <- map(models, ~models_coeffs(.x, 1.5))
+tables$comps <- map(models, ~models_coeffs(.x, 2))
 if(!export){tables$comps}
+
+tables$comps_wide <- tables$comps %>% 
+    map(~.x %>% 
+            pivot_longer(names_to = "i", values_to = "val", -1:-2) %>% 
+            unite("pred", pred, i, sep = "_") %>% 
+            pivot_wider(names_from = pred, values_from = val)
+    )
+if(!export){tables$comps_wide}
 
 # Supplement 3 ------------------------------------------------------------
 
 gridExtra::grid.arrange(
-    plots$abundance + guides(color = "none"), 
+    # plots$abundance + guides(color = "none"), 
     plots$abundance_log + guides(color = "none"), 
     plots$nsp + guides(color = "none"), 
     plots$nsp100 + guides(color = "none"), 
@@ -413,10 +434,15 @@ if(export){
         writexl::write_xlsx(
             paste0("export/models_comp_", Sys.Date(), ".xlsx")
         )
+    tables$comps_wide %>% 
+        map_dfr(rbind, .id = "response") %>% 
+        writexl::write_xlsx(
+            paste0("export/models_comp_wide", Sys.Date(), ".xlsx")
+        )
     
     # models pics text
     plots$text %>% 
-        `[`(-1) %>% 
+        # `[`(-1) %>% 
         map2(
             names(.), 
             ~ggsave(
@@ -427,7 +453,7 @@ if(export){
     
     # models pics suppl.
     plots$suppl %>% 
-        `[`(-1) %>% 
+        # `[`(-1) %>% 
         map2(
             names(.), 
             ~ggsave(

@@ -12,7 +12,7 @@ theme_set(
 long <- readxl::read_excel("Data/Carabidae_25.01.2023.xlsx", 
                            sheet = "main_data") %>% 
     filter(taxa != "no_insects") %>% 
-    select(-duration, -traps) %>% 
+    select(-duration, -traps, -num) %>% 
     arrange(desc(site), taxa) %>% # -taxa
     mutate(tur = factor(tur), 
         site = fct_inorder(site),
@@ -28,7 +28,7 @@ long <- readxl::read_excel("Data/Carabidae_25.01.2023.xlsx",
 
 # 1 = turs 1 and 2 are united
 wide <- long %>% 
-    select(-num, -tur) %>% 
+    select(-tur) %>% 
     pivot_wider(names_from = taxa, 
                 values_from = abu, 
                 # quantitative vartiables come from abundance (inds. per 100 trap-days)
